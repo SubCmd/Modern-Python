@@ -1,0 +1,23 @@
+# .pre-commit-config.yaml
+
+repos:
+  # ── Ruff (린트 + 포매트) ──
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6          # ruff 버전과 맞추기 (현재 uv.lock: ruff 0.15.x)
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^my-project/
+      - id: ruff-format
+        files: ^my-project/
+
+  # ── 범용 파일 검사 ──
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace   # 줄 끝 공백 제거
+      - id: end-of-file-fixer     # 파일 끝 빈 줄
+      - id: check-yaml            # YAML 문법
+      - id: check-toml            # TOML 문법
+      - id: check-added-large-files
+        args: [--maxkb=500]

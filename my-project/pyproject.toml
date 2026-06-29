@@ -1,0 +1,41 @@
+[project]
+name = "metric-copilot"
+version = "0.1.0"
+description = "자연어 → SQL/Analytics 에이전트"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "langchain>=0.3.0",
+    "pandas>=2.2.0",
+    "google-cloud-bigquery>=3.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13",
+    "pre-commit>=4.6.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# E: 기본 에러, F: pyflakes, I: isort(import 정렬)
+# UP: pyupgrade(구식 문법 감지), B: bugbear(흔한 버그)
+# SIM: simplify(코드 단순화 제안)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
