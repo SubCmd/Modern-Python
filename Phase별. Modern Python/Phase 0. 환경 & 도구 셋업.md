@@ -317,13 +317,168 @@ repos:
       - id: check-toml             # TOML 문법 검사
 ````
 
-````bash
-````
-
 
 ````bash
+# 설치 후 동작
+$ uv add --dev pre-commit
+$ pre-commit install
+
+# 이제 git commit 할 때 자동으로 검사 실행
+$ git commit -m "feat: add LTV calculator"
+ruff.....................................................Passed
+ruff-format..............................................Passed
+trailing-whitespace......................................Passed
+end-of-file-fixer........................................Passed
+# → 모든 검사 통과해야 커밋 완료. 불량 코드 유입 원천 차단
 ````
 
+> 💡 **왜 Good이 나은가**:
+> - 커밋 시점에 자동 검사 → "나중에" = "영원히 안 함" 방지
+> - 팀 전체가 동일한 코드 스타일 유지 (설정 파일을 git에 포함)
+> - CI에서 실패하기 전에 로컬에서 잡아냄 → 피드백 루프 단축
+
+---
+
+## 3. 실전 예제: 프로젝트 처음부터 세팅하기
+
+### 3-1. Metric Copilot 프로젝트 초기화 (전체 흐름)
 
 ````bash
+# Step 1: Python 버전 설정
+$ pyenv install 3.12.4
+$ mkdir metric-copilot && cd metric-copilot
+$ pyenv local 3.12.4
+
+# Step 2: uv로 프로젝트 초기화
+$ uv init
+# → pyproject.toml, .python-version, README.md 자동 생성
+
+# Step 3: 패키지 설치
+$ uv add fastapi uvicorn langchain google-cloud-bigquery pandas
+$ uv add --dev pytest ruff mypy pre-commit httpx
+# httpx: FastAPI 테스트용 비동기 HTTP 클라이언트
+
+# Step 4: 프로젝트 구조 생성
+$ mkdir -p src/metric_copilot tests
+$ touch src/metric_copilot/__init__.py
+$ touch src/metric_copilot/main.py
+$ touch tests/__init__.py
+$ touch tests/test_main.py
 ````
+
+최종 디렉토리 구조:
+
+````
+metric-copilot/
+├── .python-version          # pyenv: "3.12.4"
+├── .pre-commit-config.yaml  # pre-commit 설정
+├── pyproject.toml           # 프로젝트 설정 통합
+├── uv.lock                  # 정확한 패키지 버전 고정
+├── README.md
+├── src/
+│   └── metric_copilot/
+│       ├── __init__.py
+│       └── main.py
+└── tests/
+    ├── __init__.py
+    └── test_main.py
+````
+
+### 3-2. pyproject.toml 완성본
+
+````toml
+[project]
+name = "metric-copilot"
+version = "0.1.0"
+description = "자연어 쿼리 → GA4/BigQuery 분석 에이전트"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "langchain>=0.3.0",
+    "google-cloud-bigquery>=3.25.0",
+    "pandas>=2.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+]
+
+# ──────────────────────────────────────
+# 도구 설정: 모두 이 파일에 집중
+# ──────────────────────────────────────
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src"]                    # import 경로 기준 디렉토리
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle 에러 (PEP 8 위반)
+    "F",    # pyflakes (미사용 import, 정의되지 않은 변수 등)
+    "I",    # isort (import 정렬)
+    "UP",   # pyupgrade (구식 Python 문법을 최신으로 변환)
+    "B",    # flake8-bugbear (흔한 버그 패턴 감지)
+    "SIM",  # flake8-simplify (불필요하게 복잡한 코드 감지)
+    "N",    # pep8-naming (변수/함수 네이밍 규칙)
+]
+ignore = [
+    "E501",  # 줄 길이 초과는 formatter에게 맡김
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["metric_copilot"]
+# → import metric_copilot.xxx 를 "내 코드" 영역으로 인식
+
+[tool.ruff.format]
+quote-style = "double"           # 쌍따옴표 통일
+indent-style = "space"           # 스페이스 들여쓰기 (탭 아님)
+docstring-code-format = true     # docstring 안의 코드도 포매팅
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+# -v: 테스트 이름 상세 출력
+# --tb=short: 에러 traceback을 짧게
+
+[tool.mypy]
+python_version = "3.12"
+strict = true                    # 가장 엄격한 타입 체크 모드
+warn_return_any = true           # Any 타입 반환 시 경고
+warn_unused_configs = true
+````
+
+### 3-3. Cursor IDE 연동 설정
+
+````json
+// .vscode/settings.json (Cursor도 이 파일을 사용)
+{
+    // ruff를 기본 포매터 + 린터로 사용
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+
+    // mypy 타입 체크 활성화
+    "python.analysis.typeCheckingMode": "strict",
+
+    // 가상환경 경로 (uv가 .venv에 생성)
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+}
+````
+
+> 💡 **이렇게 설정하면**: 파일 저장(Ctrl+S)만 하면 자동으로
+> import 정렬 → 코드 포매팅 → 린트 에러 수정이 한 번에 실행됨
+
+---
