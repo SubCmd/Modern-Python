@@ -214,7 +214,7 @@ def export_cohort_data(data: CohortData, format: str = "csv") -> None:
 
 ---
 
-## 2-4. f-string 기초 → 고급
+### 2-4. f-string 기초 → 고급
 
 ```python
 # ❌ Bad: 구식 문자열 포매팅
@@ -241,3 +241,168 @@ msg = f"{user_name}님의 주문 {order_count}건, 매출 {revenue:,}원"
 # 2. {:,}로 천 단위 콤마 자동 삽입
 # 3. 변수 순서 실수 없음 (위치 기반이 아니라 이름 기반)
 ```
+
+---
+
+### 2-5. f-string 고급 기능
+
+#### (a) `=` 셀프 문서화 (Python 3.8+, 디버깅 특화)
+
+```python
+# ❌ Bad: 디버깅할 때 변수명과 값을 따로 적음
+total = 150_000
+discount_rate = 0.15
+final = total * (1 - discount_rate)
+print(f"total: {total}, discount_rate: {discount_rate}, final: {final}")
+# → "total: 150000, discount_rate: 0.15, final: 127500.0"
+```
+
+```python
+# ✅ Good: f-string에 = 붙이기 (셀프 문서화)
+total = 150_000
+discount_rate = 0.15
+final = total * (1 - discount_rate)
+print(f"{total=}, {discount_rate=}, {final=}")
+# → "total=150000, discount_rate=0.15, final=127500.0"
+
+# 표현식에도 사용 가능
+print(f"{total * (1 - discount_rate) = :,.0f}")
+# → "total * (1 - discount_rate) = 127,500"
+```
+
+> 💡 **`=` 기능**: f-string 안에서 `{변수=}`라고 쓰면
+> **변수명 = 값** 형태로 자동 출력. 디버깅할 때 `print(f"x: {x}")`보다 훨씬 빠름.
+
+
+#### (b) 포맷 스펙 (숫자, 정렬, 날짜)
+
+```python
+revenue = 15832400
+conversion_rate = 0.0347
+from datetime import datetime
+now = datetime.now()
+
+# 숫자 포매팅
+print(f"매출: {revenue:>15,}원")       # 오른쪽 정렬, 15칸, 천 단위 콤마
+# → "매출:      15,832,400원"
+
+print(f"전환율: {conversion_rate:.1%}")  # 퍼센트 변환 (소수점 1자리)
+# → "전환율: 3.5%"
+
+print(f"전환율: {conversion_rate:.4f}") # 소수점 4자리 고정
+# → "전환율: 0.0347"
+
+# 날짜 포매팅
+print(f"보고서 생성: {now:%Y-%m-%d %H:%M}")
+# → "보고서 생성: 2026-06-29 14:30"
+
+# 진법 변환
+user_id = 255
+print(f"User ID: {user_id:#x}")  # 16진수
+# → "User ID: 0xff"
+print(f"권한 비트: {user_id:#b}")  # 2진수
+# → "권한 비트: 0b11111111"
+```
+
+**자주 쓰는 포맷 스펙 요약:**
+
+| 스펙 | 의미 | 예시 | 결과 |
+|------|------|------|------|
+| `:,` | 천 단위 콤마 | `f"{1234567:,}"` | `"1,234,567"` |
+| `:.2f` | 소수점 2자리 고정 | `f"{3.14159:.2f}"` | `"3.14"` |
+| `:.1%` | 퍼센트 (소수점 1자리) | `f"{0.0347:.1%}"` | `"3.5%"` |
+| `:>10` | 오른쪽 정렬, 10칸 | `f"{'hi':>10}"` | `"        hi"` |
+| `:<10` | 왼쪽 정렬, 10칸 | `f"{'hi':<10}"` | `"hi        "` |
+| `:^10` | 가운데 정렬, 10칸 | `f"{'hi':^10}"` | `"    hi    "` |
+| `:0>5` | 0으로 채우기 | `f"{42:0>5}"` | `"00042"` |
+
+
+#### (c) f-string 안의 중첩 표현식 (Python 3.12+)
+
+```python
+# Python 3.12 이전: f-string 안에서 같은 따옴표 사용 불가
+# ❌ Bad
+# name = f"{'VIP' if score > 100 else 'Normal'}"  # 작동은 하지만 가독성 나쁨
+
+# Python 3.12+: f-string 안에서 자유로운 표현식 허용
+users = {"김윤섭": "VIP", "이민수": "Gold"}
+
+# ✅ Good (3.12+)
+print(f"세그먼트: {users["김윤섭"]}")  # f-string 안에서 큰따옴표 재사용 가능
+# → "세그먼트: VIP"
+
+# 3.12 이전에는 이렇게 해야 했음:
+print(f"세그먼트: {users['김윤섭']}")  # 안쪽에 작은따옴표 써야 함
+```
+
+> 💡 **3.12 f-string 개선**: 이전에는 f-string 바깥의 따옴표와 안쪽 따옴표가
+> 겹치면 에러가 났는데, 3.12부터는 중첩 제한이 풀림.
+
+---
+
+### 2-6. walrus operator `:=` (바다코끼리 연산자, Python 3.8+)
+
+```python
+# ❌ Bad: 값을 계산하고, 조건문에서 다시 사용하려면 변수를 미리 만들어야 함
+import re
+
+# 예시 1: 정규식 매치
+line = "Order #12345 - Total: 150,000원"
+match = re.search(r"Order #(\d+)", line)
+if match:
+    order_id = match.group(1)
+    print(f"주문번호: {order_id}")
+
+# 예시 2: 리스트에서 조건 필터링 후 변환
+raw_revenues = ["100000", "invalid", "250000", "N/A", "180000"]
+valid = []
+for r in raw_revenues:
+    stripped = r.strip()
+    if stripped.isdigit():
+        valid.append(int(stripped))
+```
+
+```python
+# ✅ Good: walrus operator로 대입과 사용을 한 줄에
+import re
+
+# 예시 1: 정규식 매치 — 대입과 조건 판단을 동시에
+line = "Order #12345 - Total: 150,000원"
+if match := re.search(r"Order #(\d+)", line):
+    print(f"주문번호: {match.group(1)}")
+# match 변수가 None이 아닐 때만 if 블록 진입
+
+# 예시 2: 리스트 컴프리헨션에서 중간 계산 결과 재사용
+raw_revenues = ["100000", "invalid", "250000", "N/A", "180000"]
+valid = [
+    int(stripped)
+    for r in raw_revenues
+    if (stripped := r.strip()).isdigit()
+]
+# → [100000, 250000, 180000]
+# stripped를 한 번만 계산하고, 조건 판단 + 변환에 모두 사용
+```
+
+> 💡 **walrus operator `:=`**:
+> 일반 `=`은 "대입문(statement)"이라 if/while 조건 안에서 못 쓴다.
+> `:=`은 "대입 표현식(expression)"이라 조건 안에서 값을 대입하면서 동시에 그 값을 반환.
+> 이름의 유래: `:=` 모양이 바다코끼리 눈과 엄니를 닮아서.
+
+
+**walrus가 유용한 대표 패턴 3가지:**
+
+```python
+# 패턴 1: while + 입력 읽기
+while (line := input("쿼리 입력 (q=종료): ")) != "q":
+    print(f"실행: {line}")
+
+# 패턴 2: API 응답에서 값 추출 + None 체크
+if (data := response.get("results")) is not None:
+    process(data)
+
+# 패턴 3: 비용이 큰 함수 호출 결과 재사용
+if (result := expensive_query(user_id)) and result.is_valid:
+    save(result)
+```
+
+---
