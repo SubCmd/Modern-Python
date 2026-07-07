@@ -107,7 +107,7 @@ def get_user_segment(total_purchase: int, last_order_days: int) -> str:
 
 ---
 
-## 2-2. 모던 타입힌트 - `\|` 유니온 (Python 3.10+)
+### 2-2. 모던 타입힌트 - `\|` 유니온 (Python 3.10+)
 
 ```python
 # ❌ Bad: Python 3.9 이전 스타일
@@ -404,5 +404,244 @@ if (data := response.get("results")) is not None:
 if (result := expensive_query(user_id)) and result.is_valid:
     save(result)
 ```
+
+---
+
+### 2-7. None 처리 패턴
+
+```python
+# ❌ Bad: None 체크를 == 로 함
+def get_discount(user_tier):
+    if user_tier == None:      # ❌ == 대신 is 사용해야 함
+        return 0
+    if user_tier == "VIP":
+        return 0.2
+    return 0.05
+
+# 더 나쁜 예: None을 빈 문자열이나 0과 혼동
+def get_display_name(name):
+    if not name:               # ❌ 빈 문자열 ""도 False, 0도 False
+        return "Unknown"       # name이 0이나 ""일 때도 Unknown 반환됨
+    return name
+```
+
+```python
+# ✅ Good: None은 항상 is / is not으로 비교
+def get_discount(user_tier: str | None) -> float:
+    if user_tier is None:      # ✅ is None (동일 객체인지 비교)
+        return 0.0
+    if user_tier == "VIP":
+        return 0.2
+    return 0.05
+
+# None과 falsy 값을 명확히 구분
+def get_display_name(name:str | None) -> str:
+    if name is None:           # ✅ None만 체크 (빈 문자열은 통과)
+        return "Unknown"
+    return name
+
+# 또는 더 간결하게 (기본값 패턴)
+def get_display_name(name: str | None) -> str:
+    return name if name is not None else "Unknown"
+```
+
+> 💡 **`is` vs `==`**:
+> - `==`는 **값이 같은지** 비교 (내용 비교)
+> - `is`는 **같은 객체인지** 비교 (메모리 주소 비교)
+> - None은 Python 전체에서 딱 하나만 존재하는 특별한 객체(싱글톤)이므로 `is`가 정확
+
+**None 관련 Falsy 함정 정리:**
+
+```python
+# Python에서 False로 평가되는 값들 (falsy values):
+# None, False, 0, 0.0, "", [], {}, set(), ()
+
+# 이들이 모두 다른 의미인데 if not x로 뭉뚱그리면 버그 발생
+value = 0  # 유효한 값 (할인율 0%, 재고 0개 등)
+if not value:
+    print("값 없음!")  # ❌ 0은 유효한 값인데 "값 없음"으로 처리됨
+
+if value is None:
+    print("값 없음!")  # ✅ None일 때만 "값 없음"
+```
+
+---
+
+### 2-8. 문자열 메서드 - 알지만 잘 안 쓰는 것들
+
+```python
+# ❌ Bad: 수동으로 문자열 조작
+tags = ["프로모션", "여름세일", "신규회원"]
+tag_string = ""
+for i, tag in enumerate(tags):
+    tag_string += tag                   # 문자열 += 반복은 성능 나쁨
+    if i < len(tags) - 1:
+        tag_string += ", "
+# → "프로모션, 여름세일, 신규회원"
+```
+
+```python
+# ✅ Good: str.join()
+tags = ["프로모션", "여름세일", "신규회원"]
+tag_string = ", ".join(tags)
+# → "프로모션, 여름세일, 신규회원"
+```
+
+```python
+# 실전에서 자주 쓰이는 str 메서드 모음
+
+order_id = "  ORD-2024-00123  "
+
+# 1. strip 계열: 양쪽/왼쪽/오른쪽 공백(또는 특정 문자) 제거
+order_id.strip()             # → "ORD-2024-00123"
+order_id.lstrip()            # → "ORD-2024-00123  " (왼쪽만)
+"###VIP###".strip("#")       # → "VIP" (특정 문자 제거)
+
+# 2. startswith / endswith: 접두사/접미사 체크 (여러 개 가능)
+filename = "report_2024.csv"
+filename.endswith((".csv", ".tsv", ".xlsx"))  # → True (튜플로 여러 확장자 체크)
+
+# 3. removeprefix / removesuffix (Python 3.9+)
+"test_calculate_ltv".removeprefix("test_")   # → "calculate_ltv"
+"report.csv".removesuffix(".csv")            # → "report"
+# ❌ 이전에는 이렇게 해야 했음:
+# s[len("test_"):] if s.startswith("test_") else s
+
+# 4. partition: 구분자 기준으로 3분할
+"user_id=12345".partition("=")  # → ("user_id", "=", "12345")
+# split과 다르게 구분자도 반환 + 정확히 3개로만 분할
+
+# 5. zfill: 0으로 채우기
+"42".zfill(5)                   # → "00042" (주문번호 포매팅)
+```
+
+---
+
+### 2-9. 변수 네이밍 - 의도를 드러내는 이름
+
+```python
+# ❌ Bad: 축약어, 의미 불명확한 이름
+def calc(d, r):
+    return d * (1 - r)
+
+t = 30
+ul = ["김윤섭", "이민수"]
+flag = True
+tmp = get_data()
+```
+
+```python
+# ✅ Good: 의도를 드러내는 이름
+def calculate_discounted_prcie(original_price: int, discount_rate: float) -> float:
+    return original_price * (1 - discount_rate)
+
+retention_days: int = 30
+active_user_names: list[str] = ["김윤섭", "이민수"]
+is_premium_user: bool = True        # bool은 is_, has_, can_ 접두사
+daily_revenue_data = get_data()     # "이게 뭔 데이터?"가 아니라 "일별 매출 데이터"
+```
+
+**Python 네이밍 컨벤션 (PEP 8):**
+
+| 대상 | 스타일 | 예시 |
+|------|--------|------|
+| 변수, 함수, 메서드 | snake_case | `user_count`, `calculate_ltv()` |
+| 클래스 | PascalCase | `UserSegment`, `OrderProcessor` |
+| 상수 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT`, `DEFAULT_TIMEOUT` |
+| 비공개(내부용) | `_` 접두사 | `_internal_cache`, `_validate()` |
+| bool 변수 | `is_`, `has_`, `can_` 접두사 | `is_active`, `has_discount` |
+
+---
+
+## 3. 실전 예제: 이커머스 분석 함수 리팩터링
+
+### 3-1. Before (타입힌트 없음, 구식 문법)
+
+```python
+# ❌ Before: growth_metrics.py (구식 스타일)
+
+from typing import Optional, List, Dict, Tuple
+
+def analyze_funnel(events, target_event=None):
+    results = {}
+    total = len(events)
+    if total == 0:
+        return None
+
+    for e in events:
+        step = e.get("step", "unknown")
+        if step not in results:
+            results[step] = 0
+        results[step] += 1
+
+    output = []
+    for step, count in results.items():
+        rate = count / total * 100
+        row = {
+            "step": step,
+            "count": count,
+            "rate": "%.1f%%" % rate,    # % 포매팅
+        }
+        if target_event != None:    # == None
+            if step == target_event:
+                row["is_target"] = True
+        output.append(row)
+
+    return output
+```
+
+### 3-2. After (모던 Python)
+
+```python
+# ✅ After: growth_metrics.py (모던 스타일)
+from collections import Counter
+from tkinter import NO
+
+type FunnelEvent = dict[str, str | int]
+type FunnelRow = dict[str, str | int | float | bool]
+
+def analyze_funnel(
+    events: list[FunnelEvent],
+    target_event: str | None = None,
+) -> list[FunnelRow] | None:
+    f"""퍼널 이벤트 목록을 받아 단계별 전환율을 계산한다.
+
+    Args:
+        events: 각 이벤트는 {"step": "장바구니", "user_id": 123} 형태.
+        target_event: 하이라이트할 특정 단계. None이면 전체 표시.
+
+    Returns:
+        단계별 카운트 + 전환율 리스크. 이벤트가 비어있으면 None.
+    """
+    if not events:
+        return None
+
+    total = len(events)
+    step_counts = Counter(event.get("step", "unknown") for event in events)
+
+    return [
+        {
+            "step": step,
+            "count": count,
+            "rate": f"{count / total:.1%}",          # f-string + :.1%
+            **({"is_target": True}                    # 조건부 dict 병합
+               if target_event is not None and step == target_event
+               else {}),
+        }
+        for step, count in step_counts.items()
+    ]
+```
+
+**변경 포인트 정리:**
+
+| # | Before | After | 이유 |
+|---|--------|-------|------|
+| 1 | `from typing import ...` | `type` 문 (3.12+) | import 감소, 명시적 별칭 |
+| 2 | `Optional[str]` | `str \| None` | 가독성 향상 |
+| 3 | 수동 dict counting | `Counter` | 표준 라이브러리 활용 |
+| 4 | `"%.1f%%" % rate` | `f"{count / total:.1%}"` | f-string이 더 읽기 쉬움 |
+| 5 | `!= None` | `is not None` | 정확한 None 비교 |
+| 6 | 반복문 + append | 리스트 컴프리헨션 | Pythonic한 패턴 (Phase 2에서 상세 다룸) |
+| 7 | 조건부 dict 키 추가 | `**({...} if ... else {})` | dict 언패킹으로 조건부 필드 |
 
 ---
