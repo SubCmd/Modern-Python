@@ -47,5 +47,127 @@
 
 ```python
 # ❌ Bad: 어떤 인자를 위치로 넘길지, 키워드로 넘길지 모호
+def calculate_revenue(amount, tax_rate, discount_rate, currency):
+    net = amount * (1 + tax_rate) * (1 - discount_rate)
+    return f"{currency} {net:,.0f}"
+
+# 이렇게도 호출 가능하고
+calculate_revenue(100_000, 0.1, 0.05, "KRW")
+# 이렇게도 호출 가능 → 혼란
+calculate_revenue(currency="KRW", amount=100_000, tax_rate=0.1, discount_rate=0.05)
+# 이것도 가능 → 더 혼란
+calculate_revenue(100_000, 0.1, currency="KRW", discount_rate=0.05)
+```
+
+```python
+# ✅ Good: / 와 * 로 호출 방식을 강제
+def calculate_revenue(
+    amount: int,           # ← / 앞: 위치로만 전달 가능
+    /,
+    tax_rate: float,       # ← / 와 * 사이: 위치 또는 키워드 둘 다 가능
+    *,
+    discount_rate: float = 0.0,  # ← * 뒤: 키워드로만 전달 가능
+    currency: str = "KRW",
+) -> str:
+    net = amount * (1 + tax_rate) * (1 - discount_rate)
+    return f"{currency} {net:,.0f}"
+
+# [ 구역 1] / [구역 2] * [구역 3]
+# 위치 전용 / 위치 & 키워드 * 키워드 전용
+# 순서대로만 / 둘 다 가능 * 이름=값으로만
+
+# ✅ 허용
+calculate_revenue(100_000, 0.1, discount_rate=0.05)
+calculate_revenue(100_000, tax_rate=0.1, discount_rate=0.05, currency="USD")
+
+# ❌ 에러: amount는 위치 전용
+calculate_revenue(amount=100_000, tax_rate=0.1)  # TypeError!
+
+# ❌ 에러: discount_rate는 키워드 전용
+calculate_revenue(100_000, 0.1, 0.05)  # TypeError!
+```
+
+> 💡 **`/`와 `*`의 역할**:
+> ```
+> def func(a, b, /, c, d, *, e, f):
+>          ^^^^      ^^^^      ^^^^
+>       위치 전용     자유    키워드 전용
+> ```
+> - `/` 앞: 위치로만 전달 (이름으로 지정 불가)
+> - `/`와 `*` 사이: 위치도 키워드도 OK (기본 동작)
+> - `*` 뒤: 키워드로만 전달 (위치로 지정 불가)
+>
+> **왜 쓰나?**
+> API를 설계할 때 "이 인자는 이름을 바꿀 수도 있으니 위치로만 쓰게 하자"(`/`),
+> "이 인자는 뭔지 명확히 알아야 하니 이름을 꼭 쓰게 하자"(`*`)로 의도를 강제.
+
+**실전 활용 — FastAPI에서 `*`가 쓰이는 이유:**
+
+```python
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+# FastAPI의 Query()는 기본값 역할을 하면서 동시에 검증 규칙을 정의
+# * 뒤의 키워드 전용 인자로 설계되어 있음
+@app.get("/products")
+async def search_products(
+    *,                                   # ← 이후 모든 인자를 키워드 전용으로
+    query: str = Query(min_length=1),
+    category: str | None = None,
+    min_price: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, le=100),
+):
+    ...
+```
+
+---
+
+### 2-2. `*args`와 `**kwargs` - 정확한 용도
+
+```python
+# ❌ Bad: 무분별한 *args, **kwargs 남용
+def create_user(*args, **kwargs):
+    # args[0]이 뭔지, kwargs에 뭐가 오는지 전혀 알 수 없음
+    # IDE 자동완성 불가, 문서화 불가
+    name = args[0]
+    email = args[1]
+    age = kwargs.get("age", 0)
+    ...
+
+# 호출하는 쪽에서도 시그니처를 알 수 없음
+create_user("김윤섭", "kim@email.com", age=30)
+```
+
+```python
+# ✅ Good: 명시적 매개변수를 먼저, *args/**kwargs는 특수 목적에만
+def create_user(
+    name: str,
+    email: str,
+    *,
+    age: int = 0,
+    tier: str = "Normal",
+) -> dict[str, str | int]:
+    return {"name": name, "email": email, "age": age, "tier": tier}
+```
+
+
+```python
+
+```
+
+
+
+```python
+
+```
+
+
+
+```python
+
+```
+
+```python
 
 ```
