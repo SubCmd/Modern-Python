@@ -315,8 +315,41 @@ d = date(*date_parts)  # → date(2026, 6, 29)
 
 ### 2-5. `collections` 모듈 - 특수 목적 자료구조
 
+#### (a) `Counter` - 빈도 세기의 정석
+
 ```python
+# ❌ Bad: 수동으로 빈도 세기
+events = ["page_view", "add_to_cart", "page_view", "purchase",
+          "page_view", "add_to_cart", "page_view"]
+
+counts = {}
+for event in events:
+    if event in counts:
+        counts[event] += 1
+    else:
+        counts[event] = 1
 ```
 
 ```python
+# ✅ Good: Counter
+from collection import Counter
+
+counts = Counter(events)
+# → Counter({"page_view": 4, "add_to_cart": 2, "purchase": 1})
+
+# 가장 많은 N개
+counts.most_common(2)
+# → [("page_view", 4), ("add_to_cart", 2)]
+
+# Counter끼리 연산 가능
+jan_events = Counter({"page_view": 100, "purchase": 20})
+feb_events = Counter({"page_view": 150, "purchase": 15})
+
+# 합산
+total = jan_events + feb_events
+# → Counter({"page_view": 250, "purchase": 35})
+
+# 차이 (음수는 자동 제거)
+diff = feb_events - jan_events
+# → Counter({"page_view": 50})  ← purchase는 음수(-5)라 제거됨
 ```
