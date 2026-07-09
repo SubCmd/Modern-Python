@@ -353,3 +353,325 @@ total = jan_events + feb_events
 diff = feb_events - jan_events
 # → Counter({"page_view": 50})  ← purchase는 음수(-5)라 제거됨
 ```
+
+#### (b) `defaultdict` — 키 없음 에러 방지
+
+```python
+# ❌ Bad: KeyError 방지를 위한 분기 처리
+user_orders: dict[str, list[str]] = {}
+
+orders_data = [
+    ("김윤섭", "ORD-001"),
+    ("이민수", "ORD-002"),
+    ("김윤섭", "ORD-003"),
+    ("박지영", "ORD-004"),
+]
+
+for user, order_id in orders_data:
+    if user not in user_orders:        # 매번 존재 여부 확인
+        user_orders[user] = []
+    user_orders[user].append(order_id)
+```
+
+```python
+# ✅ Good: defaultdict
+from collections import defaultdict
+
+user_orders: defaultdict[str, list[str]] = defaultdict(list)
+# → 없는 키에 접근하면 자동으로 빈 list([])가 생성됨
+
+for user, order_id in order_data:
+    user_orders[user].append(order_id)  # if 체크 불필요
+# → {"김윤섭": ["ORD-001", "ORD-003"], "이민수": ["ORD-002"], "박지영": ["ORD-004"]}
+
+# 다른 기본값 예시
+word_count: defaultdict[str, int] = defaultdict(int)      # 기본값 0
+tag_sets: defaultdict[str, set] = defaultdict(set)         # 기본값 빈 set
+```
+
+> 💡 **`defaultdict(list)` vs `dict.setdefault()`**:
+> ```python
+> # setdefault도 비슷한 역할을 하지만, 매번 기본값을 적어야 함
+> user_orders.setdefault(user, []).append(order_id)
+> # defaultdict는 선언 시점에 한 번만 적으면 됨 → 더 깔끔
+> ```
+
+### (c) `deque` - 양방향 큐
+
+```python
+# ❌ Bad: list를 큐로 사용
+recent_searches: list[str] = []
+
+def add_search(query: str, max_size: int = 5) -> None:
+    recent_searches.append(query)
+    if len(recent_searches) > max_size:
+        recent_searches.pop(0)    # ← 리스트 맨 앞 삭제는 O(n)! 느림
+```
+
+```python
+# ✅ Good: deque (double-ended queue, 양방향 큐)
+from collections import deque
+
+recent_searches: deque[str] = deque(maxlen=5)
+# maxlen 설정 시 자동으로 오래된 것 제거
+
+recent_searches.append("노트북")
+recent_searches.append("마우스")
+recent_searches.append("키보드")
+recent_searches.append("모니터")
+recent_searches.append("태블릿")
+recent_searches.append("이어폰")  # "노트북"이 자동 제거됨
+# → deque(["마우스", "키보드", "모니터", "태블릿", "이어폰"], maxlen=5)
+```
+
+> 💡 **list.pop(0)은 O(n), deque.popleft()은 O(1)**:
+> 리스트는 맨 앞을 제거하면 나머지 모든 원소가 한 칸씩 앞으로 이동해야 해서 느림.
+> deque는 양쪽 끝 연산이 모두 O(1). 큐/슬라이딩 윈도우에는 deque가 정답.
+
+---
+
+## 2-6. `NamedTuple` vs `TypedDict` — 구조화된 데이터
+
+```python
+# ❌ Bad: 일반 dict로 구조화된 데이터 표현
+user = {"name": "김윤섭", "age": 30, "tier": "VIP"}
+print(user["nane"])  # ← 오타! KeyError. IDE가 잡아주지 못함
+```
+
+```python
+# ✅ Good 옵션 1: NamedTuple — 불변(immutable) 구조체
+from typing import NamedTuple
+
+class UserProfile(NamedTuple):
+    name: str
+    age: int
+    tier: str
+
+user = UserProfile(name="김윤섭", age=30, tier="VIP")
+print(user.name)     # → "김윤섭" (점 표기법, IDE 자동완성 가능)
+print(user.nane)     # ← IDE가 빨간 줄로 오타 표시!
+# user.age = 31      # ← 에러! NamedTuple은 불변
+
+# 튜플이므로 언패킹 가능
+name, age, tier = user
+```
+
+```python
+# ✅ Good 옵션 2: TypedDict — 타입이 지정된 딕셔너리
+from typing import TypedDict
+
+class OrderSummary(TypedDict):
+    order_id: str
+    total: int
+    is_paid: bool
+
+order: OrderSummary = {
+    "order_id": "ORD-001",
+    "total": 150_000,
+    "is_paid": True,
+}
+# dict처럼 쓰지만, IDE가 키 이름과 값 타입을 검증
+print(order["order_id"])   # ✅ 자동완성 가능
+print(order["ordr_id"])    # ← mypy가 오타를 잡아줌
+```
+
+**언제 뭘 쓰나?**
+
+| 자료구조 | 변경 가능 | dict 호환 | 주 용도 |
+|----------|----------|-----------|---------|
+| `NamedTuple` | ❌ 불변 | ❌ | 좌표, 설정값 등 변하지 않는 데이터 |
+| `TypedDict` | ✅ 가변 | ✅ | JSON 응답, API 페이로드 등 dict 형태가 필요할 때 |
+| `dataclass` | ✅ 가변 (기본) | ❌ | 메서드가 필요한 도메인 객체 (Phase 4에서 상세) |
+| `Pydantic BaseModel` | ✅ 가변 | ✅ (`.model_dump()`) | 검증이 필요한 외부 입력 (Phase 4에서 상세) |
+
+---
+
+### 2-7. 뮤터블 기본 인자 함정 — Python 최대 함정
+
+```python
+# ❌ Bad: 뮤터블 객체를 기본 인자로 사용
+def add_item(item: str, cart: list[str] = []) -> list[str]:
+    cart.append(item)
+    return cart
+
+# 첫 번째 호출
+print(add_item("노트북"))   # → ["노트북"] ← 정상
+# 두 번째 호출
+print(add_item("마우스"))   # → ["노트북", "마우스"] ← ???
+# 세 번째 호출
+print(add_item("키보드"))   # → ["노트북", "마우스", "키보드"] ← ???
+
+# 왜? 기본 인자 []는 함수가 정의될 때 딱 한 번만 생성됨.
+# 모든 호출이 같은 리스트 객체를 공유함!
+```
+
+```python
+# ✅ Good: None을 기본값으로 쓰고, 함수 안에서 새 리스트 생성
+def add_item(item: str, cart: list[str] | None = None) -> list[str]:
+    if cart is None:
+        cart = []           # 호출할 때마다 새 리스트 생성
+    cart.append(item)
+    return cart
+
+print(add_item("노트북"))   # → ["노트북"]
+print(add_item("마우스"))   # → ["마우스"] ← 매번 독립적!
+```
+
+> 💡 **뮤터블 기본 인자 함정**: list `[]`, dict `{}`, set `set()`을 함수의 기본 인자로 쓰면 안 됨.
+> Python은 함수가 **정의되는 시점에** 기본값 객체를 한 번만 만들고 재사용하기 때문.
+> **규칙**: 뮤터블 기본값은 항상 `None`으로 하고, 함수 안에서 새로 생성.
+
+---
+
+### 2-8. dict 패턴 모음 — 실무에서 자주 쓰는 것들
+
+```python
+products = {
+    "P001": {"name": "노트북", "price": 1_200_000, "category": "전자기기"},
+    "P002": {"name": "마우스", "price": 35_000, "category": "주변기기"},
+    "P003": {"name": "키보드", "price": 89_000, "category": "주변기기"},
+}
+
+# ── 패턴 1: .get()으로 안전한 접근 ──
+# ❌ Bad
+price = products["P999"]["price"]       # KeyError!
+
+# ✅ Good
+price = products.get("P999", {}).get("price", 0)  # → 0 (안전)
+
+# ── 패턴 2: dict에서 여러 키 한번에 추출 ──
+# ❌ Bad
+name = products["P001"]["name"]
+price = products["P001"]["price"]
+
+# ✅ Good: operator.itemgetter 또는 언패킹
+from operator import itemgetter
+
+get_name_price = itemgetter("name", "price")
+name, price = get_name_price(products["P001"])
+# → ("노트북", 1200000)
+
+# ── 패턴 3: dict 키/값 뒤집기 ──
+category_map = {"전자기기": "ELEC", "주변기기": "PERI"}
+code_to_name = {v: k for k, v in category_map.items()}
+# → {"ELEC": "전자기기", "PERI": "주변기기"}
+
+# ── 패턴 4: 여러 dict에서 동일 키 집계 ──
+monthly_revenue = [
+    {"month": "1월", "online": 5000, "offline": 3000},
+    {"month": "2월", "online": 6000, "offline": 2800},
+    {"month": "3월", "online": 7000, "offline": 3200},
+]
+
+totals = {
+    row["month"]: row["online"] + row["offline"]
+    for row in monthly_revenue
+}
+# → {"1월": 8000, "2월": 8800, "3월": 10200}
+
+# ── 패턴 5: 조건부 키 포함 (** 언패킹 활용) ──
+def build_api_payload(
+    query: str,
+    limit: int = 10,
+    offset: int | None = None,
+) -> dict[str, str | int]:
+    return {
+        "query": query,
+        "limit": limit,
+        **({"offset": offset} if offset is not None else {}),
+    }
+
+build_api_payload("노트북")           # → {"query": "노트북", "limit": 10}
+build_api_payload("노트북", offset=20) # → {"query": "노트북", "limit": 10, "offset": 20}
+```
+
+---
+
+### 2-9. `match-case`로 자료구조 분해하기 (Python 3.10+)
+
+```python
+# ❌ Bad: 중첩 if/elif로 데이터 구조 분기
+def process_event(event: dict) -> str:
+    event_type = event.get("type")
+    if event_type == "purchase":
+        amount = event.get("amount", 0)
+        if amount > 100_000:
+            return f"고액 구매: ₩{amount:,}"
+        return f"구매: ₩{amount:,}"
+    elif event_type == "refund":
+        reason = event.get("reason", "미지정")
+        return f"환불 ({reason})"
+    elif event_type == "page_view":
+        page = event.get("page", "/")
+        return f"페이지뷰: {page}"
+    else:
+        return f"알 수 없는 이벤트: {event_type}"
+```
+
+```python
+# ✅ Good: match-case로 구조적 패턴 매칭
+def process_event(event: dict[str, str | int]) -> str:
+    match event:
+        # dict 구조를 직접 매칭 + 값 추출
+        case {"type": "purchase", "amount": int(amount)} if amount > 100_000:
+            return f"고액 구매: ₩{amount:,}"
+
+        case {"type": "purchase", "amount": int(amount)}:
+            return f"구매: ₩{amount:,}"
+
+        case {"type": "refund", "reason": str(reason)}:
+            return f"환불 ({reason})"
+
+        case {"type": "refund"}:   # reason 키가 없는 경우
+            return "환불 (미지정)"
+
+        case {"type": "page_view", "page": str(page)}:
+            return f"페이지뷰: {page}"
+
+        case {"type": str(unknown_type)}:
+            return f"알 수 없는 이벤트: {unknown_type}"
+
+        case _:                    # 어떤 패턴에도 안 맞을 때 (default)
+            return "잘못된 이벤트 형식"
+
+# 사용
+process_event({"type": "purchase", "amount": 250_000})
+# → "고액 구매: ₩250,000"
+
+process_event({"type": "refund", "reason": "사이즈 불일치"})
+# → "환불 (사이즈 불일치)"
+```
+
+> 💡 **match-case (3.10+)**는 단순 값 비교가 아니라 **구조적 패턴 매칭(structural pattern matching)**.
+> dict의 키-값 구조, 리스트의 원소 패턴, 클래스의 속성을 한 번에 분해(destructure)할 수 있음.
+> if/elif 체인보다 "이 데이터가 이런 구조면 이렇게 처리"라는 의도가 훨씬 명확.
+
+**match-case로 리스트 구조 매칭:**
+
+```python
+def describe_trend(values: list[int | float]) -> str:
+    """최근 지표 추세를 한 줄로 요약한다."""
+    match values:
+        case []:
+            return "데이터 없음"
+
+        case [single]:
+            return f"단일 값: {single:,}"
+
+        case [first, second] if first < second:
+            return f"상승: {first:,} → {second:,}"
+
+        case [first, second]:
+            return f"하락/유지: {first:,} → {second:,}"
+
+        case [first, *_, last] if first < last:
+            return f"상승 추세: {first:,} → ... → {last:,} ({len(values)}개 포인트)"
+
+        case [first, *_, last]:
+            return f"하락 추세: {first:,} → ... → {last:,} ({len(values)}개 포인트)"
+
+describe_trend([100, 120, 150, 180])
+# → "상승 추세: 100 → ... → 180 (4개 포인트)"
+```
+
+---
