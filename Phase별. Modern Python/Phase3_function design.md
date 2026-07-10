@@ -151,7 +151,6 @@ def create_user(
     return {"name": name, "email": email, "age": age, "tier": tier}
 ```
 
-
 **`*args`와 `**kwargs`가 정당한 경우:**
 
 ```python
@@ -180,12 +179,56 @@ def call_llm_api(prompt: str, **model_kwargs: float | int | str) -> str:
 > 매개변수 이름을 알고 있으면 명시적으로 적기. `*args`/`**kwargs`는
 > "어떤 인자가 올지 미리 알 수 없는 경우"(래퍼, 프록시, 플러그인)에만 사용.
 
+> `*args`와 `**kwargs`를 사용하는 이유?
+> 1. 함수의 유연성 및 확장성 극대화 : `*args`, `**kwargs` 인자가 없다면 매번 함수 매개변수를 수정해줘야함.
+> 2. 데이터 일괄 처리 : 인자가 여러 개 들어와도 반복문 한 줄로 데이터 처리 가능
+> 3. 데코레이터 및 함수 전달 필수품 : 프록시 함수 만들 때 좋다 (받은 인자를 그대로 다른 함수로 넘김)
+> 즉,
+> `*args` : 몇 개가 들어올지 모르는 값들을 튜플로 묶어 처리
+> `**kwargs` : 몇 개가 들어올지 모르는 값들을 딕셔너리로 묶어 처리
+
 ---
 
-
+### 2-3. 일급 함수 - 함수를 값처럼 다루기
 
 ```python
+# ❌ Bad: 조건마다 비슷한 로직을 복사
+def sort_by_revenue(products):
+    return sorted(products, key=lambda p: p["revenue"], reverse=True)
 
+def sort_by_conversion(products):
+    return sorted(products, key=lambda p: p["conversion_rate"], reverse=True)
+
+def sort_by_name(products):
+    return sorted(products, key=lambda p: p["name"])
+```
+
+```python
+# ✅ Good: 함수를 인자로 넘겨서 전략(strategy)을 외부에서 결정
+from typing import Callable
+
+type Product = dict[str, str | int | float]
+type SortKey = Callable[[Product], str | int | float]
+
+def sort_products(
+    products: list[Product],
+    key_func: SortKey,
+    *,
+    descending: bool = True,
+) -> list[Product]:
+    """주어진 정렬 기준으로 상품을 정렬한다."""
+    return sorted(products, key=key_func, reverse=descending)
+
+# 사용: 정렬 기준을 호출 시점에 결정
+products = [
+    {"name": "노트북", "revenue": 5_000_000, "conversion_rate": 0.03},
+    {"name": "마우스", "revenue": 800_000, "conversion_rate": 0.12},
+    {"name": "키보드", "revenue": 1_200_000, "conversion_rate": 0.08},
+]
+
+by_revenue = sort_products(products, key_func=lambda p: p["revenue"])
+by_cvr = sort_products(products, key_func=lambda p: p["conversion_rate"])
+by_name = sort_products(products, key_func=lambda p: p["name"], descending=False)
 ```
 
 
