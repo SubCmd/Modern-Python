@@ -152,9 +152,35 @@ def create_user(
 ```
 
 
-```python
+**`*args`와 `**kwargs`가 정당한 경우:**
 
+```python
+# ✅ 용도 1: 래퍼(wrapper) 함수 — 원본 함수의 인자를 그대로 전달
+def with_logging(func):
+    def wrapper(*args, **kwargs):       # 어떤 함수든 감쌀 수 있으려면
+        print(f"호출: {func.__name__}")     # args/kwargs로 모든 인자를 받아야 함.
+        return func(*args, **kwargs)
+    return wrapper
+
+# ✅ 용도 2: 가변 개수 인자 (동일 타입이 여러 개)
+def calculate_total(*amounts: int) -> int:
+    """여러 금액의 합계를 계산한다."""
+    return sum(amounts)
+
+calculate_total(10_000, 25_000, 5_000)  # → 40000
+
+# ✅ 용도 3: 설정 딕셔너리 전달 (API 호출 등)
+def call_llm_api(prompt: str, **model_kwargs: float | int | str) -> str:
+    """LLM API 호출. 모델별 파라미터가 다르므로 **kwargs로 받음."""
+    # model_kwargs: {"temperature": 0.7, "max_tokens": 1000, ...}
+    '''
 ```
+
+> 💡 **규칙**
+> 매개변수 이름을 알고 있으면 명시적으로 적기. `*args`/`**kwargs`는
+> "어떤 인자가 올지 미리 알 수 없는 경우"(래퍼, 프록시, 플러그인)에만 사용.
+
+---
 
 
 
