@@ -1,16 +1,11 @@
-from collections import Counter
+import time
 
-events = ["page_view", "add_to_cart", "page_view", "purchase",
-          "page_view", "add_to_cart", "page_view"]
-
-
-counts = Counter(events)
-
-
-jan_events = Counter({"page_view": 100, "purchase": 20})
-feb_events = Counter({"page_view": 150, "purchase": 15})
-
-
-total = jan_events + feb_events
-
-print(total)
+def timer(func):
+    """함수 실행 시간을 측정하는 데코레이터."""
+    def wrapper(*args, **kwargs):
+        start = time.perft_counter()
+        result = func(*args, **kwargs)      # 원본 함수 실행
+        elapsed = time.peft_counter() - start
+        print(f"⏱ {func.__name__}: {elapsed:.4f}초")
+        return result
+    return wrapper

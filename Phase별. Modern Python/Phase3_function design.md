@@ -232,10 +232,295 @@ by_name = sort_products(products, key_func=lambda p: p["name"], descending=False
 ```
 
 
+**함수를 딕셔너리에 담아서 디스패치하기:**
 
 ```python
+# ❌ Bad: if/elif 체인으로 함수 분기
+def process_metric(metric_type: str, value: float) -> str:
+    if metric_type == "currency":
+        return f"₩{value:,.0f}"
+    elif metric_type == "rate":
+        return f"{value:.1%}"
+    elif metric_type == "count":
+        return f"{value:,.0f}명"
+    else:
+        return str(value)
+```
+
+```python
+# ✅ Good: 함수 디스패치 테이블
+type Formatter = Callable[[float], str]
+
+METRIC_FORMATTERS: dict[str, Formatter] = {
+    "currency": lambda v: f"₩{v:,.0f}",
+    "rate":     lambda v: f"{v:.1%}",
+    "count":    lambda v: f"{v:,.0f}명",
+}
+
+def process_metric(metric_type: str, value: float) -> str:
+    formatter = METRIC_FORMATTERS.get(metric_type, str)
+    return formatter(value)
+
+#새 타입 추가가 쉬움 (함수 하나 추가하면 끝)
+METRIC_FORMATTERS["duration"] = lambda v: f"{v:.1f}초"
+```
+
+> 💡 **함수 디스패치 테이블**
+> if/elif 분기 대신 dict에 함수를 담아서, 키로 함수를 꺼내 실행하는 패턴.
+> 새로운 분기를 추가할 때 기존 코드를 건드리지 않아도 됨.
+> FastAPI의 라우팅(`{"/products": handler_func}`)도 본질적으로 이 패턴.
+
+---
+
+### 2-4. 클로저 — 바깥 변수를 "기억"하는 함수
+
+```python
+# 클로저란?
+# 바깥 함수(outer)가 끝난 뒤에도,
+# 안쪽 함수(inner)가 바깥 함수의 변수를 계속 참조할 수 있는 구조
+
+def make_discount_calculator(discount_rate: float):
+    """할인율을 고정한 계산기 함수를 반환한다."""
+
+    # 이 안쪽 함수가 클로저 — discount_rate를 "기억"함
+    def calculate(price: int) -> int:
+        return int(price * (1 - discount_rate))
+
+    return calculate  # ← 함수 자체를 반환 (호출이 아님!)
+
+# 할인율별 계산기 생성
+vip_discount = make_discount_calculator(0.20)    # 20% 할인
+gold_discount = make_discount_calculator(0.10)   # 10% 할인
+
+# 사용
+vip_discount(100_000)    # → 80000  (discount_rate=0.20이 기억됨)
+gold_discount(100_000)   # → 90000  (discount_rate=0.10이 기억됨)
+
+# make_discount_calculator()는 이미 실행이 끝났는데,
+# vip_discount 안에서 discount_rate=0.20을 계속 사용할 수 있음
+# → 이것이 클로저
+```
+
+> 💡 **클로저의 핵심**
+> 함수가 **자신이 정의된 환경(scope)의 변수를 기억**하는 것.
+> 마치 함수가 "태어난 집의 주소"를 기억하고, 나중에 그 집에 있는 물건을 꺼내 쓰는 것과 비슷.
+
+**클로저의 실전 활용 — 설정 주입:**
+
+```python
+# API 키, 모델명 등 설정을 한 번 주입하면, 이후 호출마다 반복 불필요
+def create_llm_client(
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 1000,
+):
+    """설정이 주입된 LLM 호출 함수를 반환한다."""
+    def call(prompt: str, *, temperature: float = 0.7) -> str:
+        # model, max_tokens는 클로저로 기억됨
+        print(f"[{model}] max_tokens={max_tokens}, temp={temperature}")
+        print(f"Prompt: {prompt}")
+        return f"응답 from {model}"
+    return call
+
+# 설정 주입
+sonnet = create_llm_client("claude-sonnet-4-6", max_tokens=2000)
+haiku = create_llm_client("claude-haiku-4-5-20251001", max_tokens=500)
+
+# 이후 호출 시 model/max_tokens를 매번 적지 않아도 됨
+sonnet("매출 분석해줘")          # [claude-sonnet-4-6] max_tokens=2000, temp=0.7
+haiku("요약해줘", temperature=0.3) # [claude-haiku-4-5-20251001] max_tokens=500, temp=0.3
+
+'''
+[ 1단계: 설정 주입 (공장 가동) ]
+create_llm_client("claude-sonnet-4-6", max_tokens=2000)
+  │
+  ├───► [ 메모리 공간 (배낭) ] ───────┐
+  │      model = "claude-sonnet-4-6" │
+  │      max_tokens = 2000           │
+  │                                  ▼
+  └───► 내부 call 함수가 이 배낭을 짊어지고 밖으로 나옴 ──► 변수 'sonnet'에 저장
+
+-------------------------------------------------------------------------
+
+[ 2단계: 실제 사용 (일꾼 호출) ]
+sonnet("매출 분석해줘")  # 이제 모델명이나 토큰수를 넘길 필요가 없음!
+  │
+  └───► 'sonnet' 일꾼이 실행되면서 자기가 메고 있던 배낭에서
+        model("claude-sonnet-4-6")과 max_tokens(2000)를 쏙 빼서 사용함.
+'''
+```
+
+---
+
+### 2-5. 데코레이터(Decorator) - 단계별 이해
+
+데코레이터는 Python에서 가장 중요한 패턴 중 하나. 천천히 단계를 밟아보자!
+
+```python
+# 가장 단순한 데코레이터: 실행 시간을 측정
+import time
+
+def timer(func):
+    """함수 실행 시간을 측정하는 데코레이터."""
+    def wrapper(*args, **kwargs):
+        start = time.perft_counter()
+        result = func(*args, **kwargs)      # 원본 함수 실행
+        elapsed = time.peft_counter() - start
+        print(f"⏱ {func.__name__}: {elapsed:.4f}초")
+        return result
+    return wrapper
+
+# 사용법 1: 수동 적용 (데코레이터의 본질)
+def slow_query():
+    time.sleep(0.5)
+    return "결과"
+
+slow_query = timer(slow_query)  # ← 원본을 "강화된 버전"으로 교체
+slow_query()                    # ⏱ slow_query: 0.5003초
+
+# 사용법 2: @ 문법 (위와 완전히 동일)
+@timer                          # ← slow_query = timer(slow_query)의 축약
+def slow_query():
+    time.sleep(0.5)
+    return "결과"
+
+slow_query()                    # ⏱ slow_query: 0.5003초
+```
+
+> 💡 **`@decorator`는 문법적 설탕(syntactic sugar)**.
+> `@timer`를 붙이면 Python이 자동으로 `slow_query = timer(slow_query)`를 실행
+> 이해의 핵심: **데코레이터는 특별한 문법이 아니라, "함수를 받아서 함수를 반환"하는 고차 함수**
+
+
+#### Step 2: `functools.wraps` — 원본 함수 정보 보존
+
+```python
+# ❌ Bad: wraps 없는 데코레이터
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = time.perf_counter() - start
+        print(f"⏱ {func.__name__}: {elapsed:.4f}초")
+        return result
+    return wrapper
+
+@timer
+def analyze_cohort():
+    """코호트 분석을 실행한다."""
+    ...
+
+print(analyze_cohort.__name__)  # → "wrapper" ← 원본 이름이 사라짐!
+print(analyze_cohort.__doc__)   # → None      ← docstring도 사라짐!
+```
+
+```python
+# ✅ Good: functools.wraps로 원본 정보 보존
+from functools import wraps
+
+def timer(func):
+    @wraps(func)  # ← 이 한 줄 추가만으로 원본 함수의 메타데이터 보존
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = time.perf_counter() - start
+        print(f"⏱ {func.__name__}: {elapsed:.4f}초")
+        return result
+    return wrapper
+
+@timer
+def analyze_cohort():
+    """코호트 분석을 실행한다."""
+    ...
+
+print(analyze_cohort.__name__)  # → "analyze_cohort" ✅
+print(analyze_cohort.__doc__)   # → "코호트 분석을 실행한다." ✅
+```
+
+> 💡 **`@wraps(func)`**
+> wrapper 함수에 원본 함수의 `__name__`, `__doc__`, `__module__` 등을 복사해줌
+> **데코레이터를 만들 때 `@wraps`는 필수**. 안 쓰면 디버깅·문서화에서 문제 발생.
+
+
+#### Step 3: 인자를 받는 데코레이터
+
+```python
+# 목표: @retry(max_attempts=3, delay=1.0) 처럼 설정을 넘기고 싶다
+
+# 구조가 한 단계 더 중첩됨:
+# retry(max_attempts=3) → "데코레이터 함수"를 반환
+#                       → 그 데코레이터가 원본 함수를 받아서 wrapper를 반환
+
+from functools import wraps
+import time
+
+def retry(max_attempts: int = 3, delay: float = 1.0):
+    """실패 시 재시도하는 데코레이터. 인자로 재시도 횟수와 대기 시간을 받음."""
+
+    def decorator(func):              # ← 실제 데코레이터
+        @wraps(func)
+        def wrapper(*args, **kwargs): # ← 실제 래퍼
+            last_exception = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    print(f"⚠ {func.__name__} 실패 ({attempt}/{max_attempts}): {e}")
+                    if attempt < max_attempts:
+                        time.sleep(delay)
+            raise last_exception   # 모든 재시도 실패 시 마지막 예외를 다시 발생
+        return wrapper
+    return decorator
+
+# 사용
+@retry(max_attempts=3, delay=0.5)
+def fetch_analytics_data(campaign_id: str) -> dict:
+    """외부 API에서 캠페인 데이터를 가져온다."""
+    # 네트워크 오류가 발생할 수 있는 코드
+    ...
+```
+
+**데코레이터 3단 구조 분해:**
 
 ```
+@retry(max_attempts=3, delay=0.5)      ← Step 1: retry(...)를 호출 → decorator 반환
+def fetch_analytics_data(...):         ← Step 2: decorator(fetch_analytics_data) → wrapper 반환
+    ...                                 ← Step 3: 이후 fetch_analytics_data()를 호출하면 wrapper() 실행
+
+# 풀어 쓰면:
+decorator = retry(max_attempts=3, delay=0.5)   # 바깥 함수 호출
+fetch_analytics_data = decorator(fetch_analytics_data)  # 가운데 함수 호출
+# 이후: fetch_analytics_data() → wrapper() 실행   # 안쪽 함수 호출
+```
+
+#### Step 4: 데코레이터 쌓기 (스태킹)
+
+```python
+@timer                           # ← 2번째 적용 (바깥)
+@retry(max_attempts=3)           # ← 1번째 적용 (안쪽)
+def fetch_data(url: str) -> dict:
+    ...
+
+# 실행 순서:
+# 1. timer의 wrapper가 호출됨 (시간 측정 시작)
+# 2. → retry의 wrapper가 호출됨 (재시도 로직)
+# 3.   → 원본 fetch_data가 호출됨
+# 4. → retry의 wrapper가 결과/예외 처리
+# 5. timer의 wrapper가 시간 측정 종료
+
+# 풀어 쓰면:
+# fetch_data = timer(retry(max_attempts=3)(fetch_data))
+# → 안쪽(retry)부터 적용, 바깥(timer)이 나중에 감쌈
+```
+
+> 💡 **데코레이터 스태킹 순서**: 아래에서 위로 적용됨.
+> 실행은 위에서 아래로 진입 → 원본 함수 → 아래에서 위로 빠져나옴 (양파 껍질 구조)
+
+> **데코레이터의 장점?**
+> 데코레이터의 목적은 **"지금 당장 실행하는 것"**이 아니라,
+> **"나중에 이 함수가 호출될 때 추가 기능을 함께 실행하도록 예약하는 것"**
+
+---
 
 ```python
 
